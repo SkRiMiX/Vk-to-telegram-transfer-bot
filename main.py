@@ -127,21 +127,6 @@ def tg_send_msg(tg_chat_id, vk_name, text):
     bot.send_message(tg_chat_id, formatted_text)
 
 
-'''
-def tg_messages_handler(messages):
-    for m in messages:
-
-        if m.content_type == 'sticker':
-
-            if not (config.get_cell('vk_EnableStickers')):
-                return False
-
-            file_path = bot.get_file(m.sticker.file_id).file_path
-
-            check_redirect_telegram(str(m.chat.id), str(m.text), get_user_t_name(m.from_user), str(file_path))
-'''
-
-
 def tg_init():
     global bot
     bot = telebot.TeleBot(config.get_cell('telegram_token'))
@@ -175,7 +160,6 @@ def tg_init():
 
 
 def tg_listen(_event):
-    # bot.set_update_listener(tg_messages_handler)
     while not _event.is_set():
         try:
             bot.polling(none_stop=False)
