@@ -14,9 +14,9 @@ import config
 
 
 # TODO: проверять, настроены ли тоннели
-debug_mode = config.get_cell('debug_mode')
-vk_mark_as_read = config.get_cell('vk_mark_as_read')
-tg_send_name = config.get_cell('telegram_send_name')
+DEBUG_MODE = config.get_cell('debug_mode')
+VK_MARK_AS_READ = config.get_cell('vk_mark_as_read')
+TG_SEND_NAME = config.get_cell('telegram_send_name')
 
 module = sys.modules[__name__]
 
@@ -72,13 +72,13 @@ def vk_handle_msg(event):
     elif event.from_user:
         forward_to = config.get_cell("vk_" + str(event.user_id))
     if forward_to and not event.from_me:
-        if debug_mode:
+        if DEBUG_MODE:
             print("DEBUG: forwarding message from VK")
         dataname = module.vk.users.get(user_ids=event.user_id)
         name = str(dataname[0]['first_name'] + ' ' + dataname[0]['last_name'])
         tg_send_msg(forward_to, name, event.message)
         # Отмечаем диалог прочитанным, если включено
-        if vk_mark_as_read:
+        if VK_MARK_AS_READ:
             module.vk.messages.markAsRead(peer_id=event.peer_id)
 
 
@@ -87,13 +87,13 @@ def vk_listen(_event):
     while not _event.is_set():
         try:
             for event in longpoll.listen():
-                if debug_mode:
+                if DEBUG_MODE:
                     print("DEBUG: got event", event.type, event.raw[1:])
                 if event.type == VkEventType.MESSAGE_NEW:
                     vk_handle_msg(event)
                     module.vk.messages.markAsRead(peer_id=event.peer_id)
         except Exception as error_msg:
-            if debug_mode:
+            if DEBUG_MODE:
                 print(error_msg)
             continue
 
@@ -106,7 +106,7 @@ def vk_send_msg(vk_peer_id, text, tg_name=None):
     try: # Костыль конечно, надо с ним что-то сделать
         module.vk.messages.send(chat_id=vk_peer_id, message=text, random_id=randid)
     except vk_api.ApiError as error_msg:
-        if debug_mode:
+        if DEBUG_MODE:
             print("Error while sending message to chat_id, trying user_id")
         module.vk.messages.send(user_id=vk_peer_id, message=text, random_id=randid)
 
@@ -163,9 +163,9 @@ def tg_init():
     def tg_handle_msg(m):
         forward_to = config.get_cell('t_' + str(m.chat.id))
         if forward_to:
-            if debug_mode:
+            if DEBUG_MODE:
                 print("DEBUG: forwarding message from Telegram")
-            if tg_send_name:
+            if TG_SEND_NAME:
                 if m.from_user.last_name:
                     vk_send_msg(forward_to, m.text, m.from_user.first_name + " " + m.from_user.last_name)
                 else:
@@ -180,7 +180,7 @@ def tg_listen(_event):
         try:
             bot.polling(none_stop=False)
         except Exception as error_msg:
-            if debug_mode:
+            if DEBUG_MODE:
                 print(error_msg)
             continue
 
