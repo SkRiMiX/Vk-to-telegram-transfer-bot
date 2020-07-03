@@ -82,9 +82,9 @@ def vk_handle_msg(event):
             module.vk.messages.markAsRead(peer_id=event.peer_id)
 
 
-def vk_listen(_event):
+def vk_listen():
     longpoll = VkLongPoll(vk_session)
-    while not _event.is_set():
+    while True:
         try:
             for event in longpoll.listen():
                 if DEBUG_MODE:
@@ -159,8 +159,8 @@ def tg_init():
                 vk_send_msg(forward_to, m.text)
 
 
-def tg_listen(_event):
-    while not _event.is_set():
+def tg_listen():
+    while True:
         try:
             bot.polling(none_stop=False)
         except Exception as error_msg:
