@@ -17,6 +17,7 @@ import config
 DEBUG_MODE = config.get_cell('debug_mode')
 VK_MARK_AS_READ = config.get_cell('vk_mark_as_read')
 TG_SEND_NAME = config.get_cell('telegram_send_name')
+VK_STICKER_SCALE_ENABLE = config.get_cell('vk_sticker_scale_enable')
 
 module = sys.modules[__name__]
 
@@ -44,6 +45,37 @@ def vk_auth_handler():
 def vk_captcha_handler(captcha):
     key = input("Enter Captcha {0}: ".format(captcha.get_url())).strip()
     return captcha.try_again(key)
+
+
+def vk_send_msg(vk_peer_id, text, tg_name=None):
+    randid = random.randint(-9223372036854775808, +9223372036854775807)  # int64
+    if tg_name:
+        text = str(tg_name + ': ' + text)
+
+    try:  # Костыль конечно, надо с ним что-то сделать
+        module.vk.messages.send(chat_id=vk_peer_id, message=text, random_id=randid)
+    except vk_api.ApiError as error_msg:
+        if DEBUG_MODE:
+            print("Error while sending message to chat_id, trying user_id")
+        module.vk.messages.send(user_id=vk_peer_id, message=text, random_id=randid)
+
+
+def vk_sticker_send(sticker_path, send_to):
+    randid = random.randint(-9223372036854775808, +9223372036854775807)  # int64
+    sticker_path = sticker_path + ".png"
+    upload = vk_api.VkUpload(vk_session)
+    graffiti = upload.graffiti(sticker_path, send_to)
+
+    os.remove(sticker_path)
+
+    try:
+        module.vk.messages.send(chat_id=send_to, message="",
+                                attachment='doc{owner_id}_{id}'.format(**graffiti['graffiti']), random_id=randid)
+    except vk_api.ApiError as error_msg:
+        if DEBUG_MODE:
+            print("Error while sending message to chat_id, trying user_id")
+        module.vk.messages.send(user_id=send_to, message="",
+                                attachment='doc{owner_id}_{id}'.format(**graffiti['graffiti']), random_id=randid)
 
 
 # Подключение api ВК
@@ -98,19 +130,6 @@ def vk_listen():
             continue
 
 
-def vk_send_msg(vk_peer_id, text, tg_name=None):
-    randid = random.randint(-9223372036854775808, +9223372036854775807)  # int64
-    if tg_name:
-        text = str(tg_name + ': ' + text)
-
-    try: # Костыль конечно, надо с ним что-то сделать
-        module.vk.messages.send(chat_id=vk_peer_id, message=text, random_id=randid)
-    except vk_api.ApiError as error_msg:
-        if DEBUG_MODE:
-            print("Error while sending message to chat_id, trying user_id")
-        module.vk.messages.send(user_id=vk_peer_id, message=text, random_id=randid)
-
-
 #    _______   _
 #   |__   __| | |
 #      | | ___| | ___  __ _ _ __ __ _ _ __ ___
@@ -127,11 +146,41 @@ def tg_send_msg(tg_chat_id, vk_name, text):
     bot.send_message(tg_chat_id, formatted_text)
 
 
+def tg_sticker_download(sticker_url, path):
+    dir_path = path.split('/')[0] + '/'
+    full_path = dir_path + path.split('/')[1]
+
+    content = ur.urlopen(sticker_url).read()
+
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
+    # Перекодирование из webp в png
+    image_webp = full_path
+
+    with open(image_webp, 'wb') as out:
+        out.write(content)
+
+    img = Image.open(image_webp)
+
+    if VK_STICKER_SCALE_ENABLE:
+        scale = config.get_cell('vk_sticker_size')
+        img.thumbnail((scale, scale))
+    img.save(image_webp + ".png", "PNG")
+    os.remove(image_webp)
+
+    return full_path
+
+# Разработчикам на заметку:
+# Telegram та ещё поехавшая вещь, иногда аттачменты идут с расширением файла, иногда - без него
+# Из-за этого я долго не мог понять, почему одни стикеры отправляются нормально, а другие - выдают ошибку при отправке
+
+
 def tg_init():
     global bot
     bot = telebot.TeleBot(config.get_cell('telegram_token'))
     print("Logged in telegram")
-    if config.get_cell('telegram_useProxy'):
+    if config.get_cell('telegram_use_proxy'):
         proxy_type = str(config.get_cell('p_type'))
         proxy_user_info = str(config.get_cell('p_user') + ':' + config.get_cell('p_password'))
         proxy_data = str(config.get_cell('p_host') + ':' + config.get_cell('p_port'))
@@ -157,6 +206,20 @@ def tg_init():
                     vk_send_msg(forward_to, m.text, m.from_user.first_name)
             else:
                 vk_send_msg(forward_to, m.text)
+
+    @bot.message_handler(func=lambda message: True, content_types=['sticker'])
+    def tg_handle_sticker(m):
+        if config.get_cell('vk_stickers_enable'):
+            file_path = bot.get_file(m.sticker.file_id).file_path
+            forward_to = config.get_cell('t_' + str(m.chat.id))
+            if forward_to:
+                if DEBUG_MODE:
+                    print("DEBUG: forwarding sticker from Telegram")
+
+                sticker_url = 'https://api.telegram.org/file/bot{0}/{1}'.format(config.get_cell('telegram_token'),
+                                                                                file_path)
+                sticker_path = tg_sticker_download(sticker_url, file_path)
+                vk_sticker_send(sticker_path, forward_to)
 
 
 def tg_listen():
